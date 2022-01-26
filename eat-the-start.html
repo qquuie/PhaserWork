@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="phaser/phaser.min.js"></script>
+    <title>Document</title>
+    <style type="text/css">
+        body {
+            margin: 0;
+        }
+    </style>
+</head>
+
+<body>
+    <script>
+        const config = {
+            type: Phaser.AUTO, //以甚麼開啟WEB_GL優先，canvas
+            width: 800,
+            height: 600,
+            scale: {
+                mode: Phaser.Scale.FIT,
+                autoCenter: Phaser.Scale.CENTER_BOTH,
+            },
+            physics: {
+                default: 'arcade', //是否啟動物理引擎，Matter比較細膩
+                arcade: {
+                    gravity: {
+                        y: 300,
+                    }, //重力
+                    debug: false,
+                }
+            },
+            scene: {
+                preload: preload,
+                create: create,
+                update: update,
+            }, //場景切換
+        };
+
+        let platforms;
+        let cursors;
+        let stars;
+        let r_stars;
+        let score = 0;
+        let scoreText;
+        let bombs;
+        let gameover = false;
+        let restartText;
+        var game = new Phaser.Game(config);
+        let Checkpoint = 1;
+
+        function preload() {
+            this.load.crossOrigin = 'anonymous';
+            this.load.image("sky", "image/sky.png");
+            this.load.image("ground", "image/platform.png");
+            this.load.image("star", "image/star.png");
+            this.load.image("bomb", "image/bomb.png");
+            this.load.spritesheet("dude", "image/dude.png", {
+                frameWidth: 32,
+                frameHeight: 48,
+            });
+
+        }
+
+        function create() {
+            this.add.image(400, 300, "sky");
+
+            platforms = this.physics.add.staticGroup();
+            platforms.create(400, 568, "ground").setScale(2).refreshBody();
+            platforms.create(600, 400, "ground"); //右下
+            platforms.create(50, 250, "ground"); //左上
+            platforms.create(750, 200, "ground"); //右上
+
+            player = this.physics.add.sprite(100, 450, "dude");
+            player.setBounce(0.2);
+            player.setCollideWorldBounds(true);
+
+            cursors = this.input.keyboard.createCursorKeys();
+
+            this.anims.create({
+                key: "left",
+                frames: this.anims.generateFrameNumbers("dude", {
+                    start: 0,
+                    end: 3,
+                }),
+                framesRate: 10,
+                repeat: -1,
+            });
+            this.anims.create({
+                key: "turn",
+                frames: [{
+                    key: "dude",
+                    frames: 4,
+                }],
+                framesRate: 20,
+            });
+            this.anims.create({
+                key: "right",
+                frames: this.anims.generateFrameNumbers("dude", {
+                    start: 5,
+                    end: 8,
+                }),
+                framesRate: 10,
+                repeat: -1,
+            });
+
+
+            let red_num = Phaser.Math.Between(2, 4);
+            stars = this.physics.add.group({
+                key: "star",
+                repeat: 6,
+                setXY: {
+                    x: 105,
+                    y: 0,
+                    stepX: 100,
+                }
+            });
+            r_stars = this.physics.add.group({
+                name: "R",
+                key: "star",
+                repeat: red_num,
+                setXY: {
+                    x: Phaser.Math.Between(20, 400),
+                    y: 0,
+                    stepX: Phaser.Math.Between(50, 100),
+                }
+            });
+            r_stars.setTint(0xff0000)
+            stars.children.iterate(function(child) {
+                child.setBounceY(Phaser.Math.FloatBetween(0.4, 0.8));
+            });
+            r_stars.children.iterate(function(child) {
+                child.setBounceY(Phaser.Math.FloatBetween(0.8, 1.0));
+            });
+
+            bombs = this.physics.add.group({
+                key: "bomb",
+                setXY: {
+                    x: -10,
+                }
+            });
+
+            this.physics.add.collider(player, platforms, (res) => {
+                if (res.body.touching.up)
+                    console.log("hit ceils");
+            });
+            this.physics.add.collider(stars, platforms);
+            this.physics.add.collider(r_stars, platforms);
+            this.physics.add.collider(bombs, platforms);
+            this.physics.add.collider(player, bombs, hitBomb, null, this);
+
+            this.physics.add.overlap(player, r_stars, collect_r_Stars, null, this);
+            this.physics.add.overlap(player, stars, collectStars, null, this);
+
+            function collectStars(player, star) {
+                score += 10;
+                star.disableBody(true, true);
+                Col();
+            }
+
+            function collect_r_Stars(player, star) {
+                score += 20;
+                star.disableBody(true, true);
+                Col();
+            }
+
+            function Col() {
+                scoreText.setText("Score: " + score);
+
+                if (r_stars.countActive(true) === 0) {
+                    if (stars.countActive(true) === 0) {
+                        stars.children.iterate(function(child) {
+                            child.enableBody(true, child.x, 0, true, true);
+                        });
+                        r_stars.children.iterate(function(child) {
+                            child.enableBody(true, child.x, 0, true, true);
+                        });
+                        let x = (player.x < 400) ? Phaser.Math.Between(400, 800) : Phaser.Math.Between(0, 400);
+                        let bomb = bombs.create(x, 16, "bomb");
+                        bomb.setBounce(1);
+                        bomb.setCollideWorldBounds(true);
+                        bomb.setVelocity(Phaser.Math.Between(-200, 200), 20);
+                        bomb.allowGravity = false;
+                        Checkpoint++;
+                        CPText.setText("關卡:" + Checkpoint);
+                    }
+                }
+            }
+
+            function hitBomb(player, bomb) {
+                this.physics.pause();
+                player.setTint(0Xff0000);
+                player.anims.play("turn");
+                gameover = true;
+            }
+
+            let CPText;
+
+            CPText = this.add.text(16, 16, "關卡:1", {
+                fill: "#000",
+                font: "36px 標楷體",
+                align: "left",
+                backgroundColor: "skyblue",
+                color: "white",
+                fixedWidth: config.width - 32,
+                padding: 10,
+            });
+
+            scoreText = this.add.text(16, 16, "Score:0", {
+                fill: "#000",
+                font: "36px 微軟正黑體",
+                align: "right",
+                color: "white",
+                fixedWidth: config.width - 32,
+                padding: 10,
+            });
+
+            restartText = this.add.text(config.width / 2 - 100, config.height / 2 - 40, "重新開始", {
+                font: "40px 微軟正黑體",
+                // align: "center",
+                backgroundColor: "black",
+                stroke: "red",
+                padding: 10,
+                color: "white",
+                // fixedWidth: config.width - 32,
+            });
+
+            restartText.setVisible(false);
+
+            restartText.setInteractive().on("pointerdown", (pointer, localX, localY, event) => {
+                score = 0;
+                gameover = false;
+                this.scene.restart();
+                console.log(2);
+            });
+        }
+
+        let PW1 = true;
+        let PW2 = true;
+        let PW3 = true;
+
+        function update() {
+            // if(bombs.x<player.)
+
+            if (PW1 == true) {
+                platforms.children.entries[1].x -= 0.5;
+
+                if (platforms.children.entries[1].x < 400) {
+                    PW1 = false;
+                }
+            } else {
+                platforms.children.entries[1].x += 0.5;
+                if (platforms.children.entries[1].x > 800) {
+                    PW1 = true;
+                }
+            }
+            if (PW2 == true) {
+                platforms.children.entries[2].x -= 0.2;
+                if (platforms.children.entries[2].x < 0) {
+                    PW2 = false;
+                }
+            } else {
+                platforms.children.entries[2].x += 0.2;
+                if (platforms.children.entries[2].x > 100) {
+                    PW2 = true;
+                }
+            }
+            if (PW3 == true) {
+                platforms.children.entries[3].x -= 0.7;
+
+                if (platforms.children.entries[3].x < 500) {
+                    PW3 = false;
+                }
+            } else {
+                platforms.children.entries[3].x += 0.7;
+                if (platforms.children.entries[3].x > 800) {
+                    PW3 = true;
+                }
+            }
+            platforms.children.entries[1].refreshBody();
+            platforms.children.entries[2].refreshBody();
+            platforms.children.entries[3].refreshBody();
+
+            // if (player.body.touching.down) {
+            if (cursors.left.isDown) {
+                player.setVelocityX(-160);
+                player.anims.play("left", true);
+            } else if (cursors.right.isDown) {
+                player.setVelocityX(160);
+                player.anims.play("right", true);
+            } else {
+                player.setVelocityX(0);
+                player.anims.play("turn");
+            }
+            // }
+            if (cursors.up.isDown && player.body.touching.down) {
+                player.setVelocityY(-330);
+            }
+
+            if (gameover) {
+                restartText.setVisible(true);
+                Checkpoint = 1;
+                // console.log(1);
+            } else {
+                for (let i = 1; i < Checkpoint; i++) {
+                    if (bombs.children.entries[i].x < player.x) {
+                        // bombs.children.entries[i].anims.play(100);
+                        // if()
+                        bombs.children.entries[i].setVelocityX(100);
+                    } else {
+                        // bombs.children.entries[i].anims.play(-100);
+                        bombs.children.entries[i].setVelocityX(-100);
+
+                    }
+                }
+            }
+        }
+    </script>
+</body>
+
+</html>
